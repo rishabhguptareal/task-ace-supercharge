@@ -6,6 +6,7 @@ import DashboardStats from '@/components/DashboardStats';
 import GoogleCalendarConnect from '@/components/GoogleCalendarConnect';
 import { AppProvider } from '@/context/AppContext';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/context/AuthContext';
 
 const LoadingSkeleton = () => (
   <div className="space-y-6">
@@ -16,12 +17,16 @@ const LoadingSkeleton = () => (
 );
 
 const Index = () => {
+  const { state: authState } = useAuth();
+
   return (
     <AppProvider>
       <Layout>
         <div className="max-w-7xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-3xl font-bold">Dashboard</h1>
+            <h1 className="text-3xl font-bold">
+              Welcome, {authState.user?.name || 'User'}
+            </h1>
             <p className="text-muted-foreground">
               Track your tasks and improve productivity
             </p>

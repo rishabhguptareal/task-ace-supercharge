@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
@@ -19,6 +21,7 @@ type FormData = z.infer<typeof formSchema>;
 
 const Login = () => {
   const { login, state } = useAuth();
+  const navigate = useNavigate();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -30,6 +33,9 @@ const Login = () => {
 
   const onSubmit = async (data: FormData) => {
     await login(data.email, data.password);
+    if (!state.error) {
+      navigate('/');
+    }
   };
 
   return (
@@ -38,9 +44,15 @@ const Login = () => {
         <Card className="border shadow-lg">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">TaskAce</CardTitle>
-            <CardDescription>Sign in to access your productivity dashboard</CardDescription>
+            <CardDescription>Sign in to your productivity dashboard</CardDescription>
           </CardHeader>
           <CardContent>
+            {state.error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{state.error}</AlertDescription>
+              </Alert>
+            )}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField

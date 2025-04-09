@@ -10,6 +10,7 @@ export interface Task {
   timeSpent: number; // in minutes
   category: string;
   calendarEventId?: string;
+  createdBy?: string; // User ID who created this task
 }
 
 export interface DailyStats {
