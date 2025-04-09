@@ -1,10 +1,11 @@
 
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 
 const PrivateRoute: React.FC = () => {
   const { state } = useAuth();
+  const location = useLocation();
 
   if (state.isLoading) {
     return (
@@ -14,7 +15,9 @@ const PrivateRoute: React.FC = () => {
     );
   }
 
-  return state.isAuthenticated ? <Outlet /> : <Navigate to="/login" />;
+  return state.isAuthenticated ? 
+    <Outlet /> : 
+    <Navigate to="/login" state={{ from: location }} replace />;
 };
 
 export default PrivateRoute;

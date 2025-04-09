@@ -15,6 +15,8 @@ interface AppContextType {
   connectGoogleCalendar: () => void;
   disconnectGoogleCalendar: () => void;
   syncTaskWithCalendar: (taskId: string) => void;
+  exportUserData: () => string;
+  importUserData: (jsonData: string) => boolean;
 }
 
 const defaultState: AppState = {
@@ -33,7 +35,8 @@ type Action =
   | { type: 'CONNECT_GOOGLE_CALENDAR' }
   | { type: 'DISCONNECT_GOOGLE_CALENDAR' }
   | { type: 'SYNC_TASK_WITH_CALENDAR'; payload: { id: string; eventId: string } }
-  | { type: 'UPDATE_DAILY_STATS' };
+  | { type: 'UPDATE_DAILY_STATS' }
+  | { type: 'IMPORT_DATA'; payload: AppState };
 
 const appReducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
@@ -77,7 +80,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
       
       // Show congratulations message if conditions met
       if (completionPercentage >= 80 && totalTimeWorked >= 14 * 60) {
-        toast.success("Congratulations! You've made it to super 30 by harkirat and aced AIR 7 in DAIICT entrance exam 2025!");
+        toast.success("Congratulations on your productivity achievement!");
       }
       
       return {
@@ -159,6 +162,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
         dailyStats: newDailyStats,
       };
     }
+    case 'IMPORT_DATA':
+      return {
+        ...action.payload
+      };
     default:
       return state;
   }
@@ -174,9 +181,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getInitialState = (): AppState => {
     if (!userId) return defaultState;
     
-    const storageKey = `productivityApp_user_${userId}`;
-    const storedState = localStorage.getItem(storageKey);
-    return storedState ? JSON.parse(storedState) : defaultState;
+    try {
+      const storageKey = `productivityApp_user_${userId}`;
+      const storedState = localStorage.getItem(storageKey);
+      return storedState ? JSON.parse(storedState) : defaultState;
+    } catch (error) {
+      console.error('Error parsing stored app state:', error);
+      return defaultState;
+    }
   };
   
   const [state, dispatch] = useReducer(appReducer, getInitialState());
@@ -184,8 +196,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Save to localStorage with user-specific key whenever state changes
   useEffect(() => {
     if (userId) {
-      const storageKey = `productivityApp_user_${userId}`;
-      localStorage.setItem(storageKey, JSON.stringify(state));
+      try {
+        const storageKey = `productivityApp_user_${userId}`;
+        localStorage.setItem(storageKey, JSON.stringify(state));
+      } catch (error) {
+        console.error('Error saving app state:', error);
+        toast.error('Failed to save your data. Please try again.');
+      }
     }
   }, [state, userId]);
 
@@ -199,26 +216,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...task,
       id: crypto.randomUUID(),
       timeSpent: 0,
+      createdBy: userId,
     };
     dispatch({ type: 'ADD_TASK', payload: newTask });
     toast.success('Task added successfully!');
   };
 
   const updateTask = (task: Task) => {
+    // Verify task ownership
+    if (task.createdBy && task.createdBy !== userId) {
+      toast.error("You don't have permission to edit this task");
+      return;
+    }
+    
     dispatch({ type: 'UPDATE_TASK', payload: task });
     toast.success('Task updated successfully!');
   };
 
   const deleteTask = (id: string) => {
+    // Verify task ownership
+    const task = state.tasks.find(t => t.id === id);
+    if (task?.createdBy && task.createdBy !== userId) {
+      toast.error("You don't have permission to delete this task");
+      return;
+    }
+    
     dispatch({ type: 'DELETE_TASK', payload: id });
     toast.success('Task deleted successfully!');
   };
 
   const toggleTaskCompletion = (id: string) => {
+    // Verify task ownership
+    const task = state.tasks.find(t => t.id === id);
+    if (task?.createdBy && task.createdBy !== userId) {
+      toast.error("You don't have permission to update this task");
+      return;
+    }
+    
     dispatch({ type: 'TOGGLE_TASK_COMPLETION', payload: id });
   };
 
   const trackTime = (id: string, timeInMinutes: number) => {
+    // Verify task ownership
+    const task = state.tasks.find(t => t.id === id);
+    if (task?.createdBy && task.createdBy !== userId) {
+      toast.error("You don't have permission to track time for this task");
+      return;
+    }
+    
     dispatch({
       type: 'TRACK_TIME',
       payload: { id, timeInMinutes },
@@ -238,6 +283,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const syncTaskWithCalendar = (taskId: string) => {
+    // Verify task ownership
+    const task = state.tasks.find(t => t.id === taskId);
+    if (task?.createdBy && task.createdBy !== userId) {
+      toast.error("You don't have permission to sync this task");
+      return;
+    }
+    
     // Mock implementation - in a real app, this would create an actual Google Calendar event
     const eventId = `event-${Date.now()}`;
     dispatch({
@@ -245,6 +297,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       payload: { id: taskId, eventId },
     });
     toast.success('Task synced with Google Calendar!');
+  };
+  
+  // Export user data function
+  const exportUserData = (): string => {
+    try {
+      return JSON.stringify(state);
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      toast.error('Failed to export data');
+      return '';
+    }
+  };
+  
+  // Import user data function
+  const importUserData = (jsonData: string): boolean => {
+    try {
+      const parsedData = JSON.parse(jsonData) as AppState;
+      
+      // Validate the imported data structure
+      if (!parsedData.tasks || !Array.isArray(parsedData.tasks)) {
+        throw new Error('Invalid data format');
+      }
+      
+      // Update ownership of imported tasks to current user
+      const tasksWithCurrentUser = parsedData.tasks.map(task => ({
+        ...task,
+        createdBy: userId
+      }));
+      
+      dispatch({ 
+        type: 'IMPORT_DATA', 
+        payload: {
+          ...parsedData,
+          tasks: tasksWithCurrentUser
+        } 
+      });
+      
+      toast.success('Data imported successfully!');
+      return true;
+    } catch (error) {
+      console.error('Error importing data:', error);
+      toast.error('Failed to import data. Invalid format.');
+      return false;
+    }
   };
 
   return (
@@ -259,6 +355,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         connectGoogleCalendar,
         disconnectGoogleCalendar,
         syncTaskWithCalendar,
+        exportUserData,
+        importUserData
       }}
     >
       {children}

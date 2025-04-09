@@ -21,16 +21,29 @@ const defaultState: AuthState = {
 
 // Check if user is already logged in
 const getInitialState = (): AuthState => {
-  const storedUser = localStorage.getItem('taskAceUser');
-  const storedToken = localStorage.getItem('taskAceToken');
-  
-  if (storedUser && storedToken) {
-    return {
-      isAuthenticated: true,
-      user: JSON.parse(storedUser),
-      isLoading: false,
-      error: null,
-    };
+  try {
+    const storedUser = localStorage.getItem('taskAceUser');
+    const storedToken = localStorage.getItem('taskAceToken');
+    const tokenExpiry = localStorage.getItem('taskAceTokenExpiry');
+    
+    if (storedUser && storedToken && tokenExpiry) {
+      // Check if token is expired
+      if (Number(tokenExpiry) > Date.now()) {
+        return {
+          isAuthenticated: true,
+          user: JSON.parse(storedUser),
+          isLoading: false,
+          error: null,
+        };
+      } else {
+        // Token expired, clear storage
+        localStorage.removeItem('taskAceUser');
+        localStorage.removeItem('taskAceToken');
+        localStorage.removeItem('taskAceTokenExpiry');
+      }
+    }
+  } catch (error) {
+    console.error('Error parsing stored user data:', error);
   }
   
   return {
@@ -102,7 +115,7 @@ const authReducer = (state: AuthState, action: Action): AuthState => {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(authReducer, getInitialState());
+  const [state, dispatch] = useReducer(authReducer, defaultState, getInitialState);
 
   // Mock authentication functions - in a real app, these would connect to a backend
   const login = async (email: string, password: string) => {
@@ -121,8 +134,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
         };
         
+        // Set token expiry to 7 days from now
+        const expiryTime = Date.now() + (7 * 24 * 60 * 60 * 1000);
+        
         localStorage.setItem('taskAceUser', JSON.stringify(user));
         localStorage.setItem('taskAceToken', 'mock-token-' + Date.now());
+        localStorage.setItem('taskAceTokenExpiry', expiryTime.toString());
         
         dispatch({ type: 'LOGIN_SUCCESS', payload: user });
         toast.success('Successfully logged in!');
@@ -151,8 +168,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: new Date().toISOString(),
       };
       
+      // Set token expiry to 7 days from now
+      const expiryTime = Date.now() + (7 * 24 * 60 * 60 * 1000);
+      
       localStorage.setItem('taskAceUser', JSON.stringify(user));
       localStorage.setItem('taskAceToken', 'mock-token-' + Date.now());
+      localStorage.setItem('taskAceTokenExpiry', expiryTime.toString());
       
       dispatch({ type: 'REGISTER_SUCCESS', payload: user });
       toast.success('Successfully registered!');
@@ -166,7 +187,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     localStorage.removeItem('taskAceUser');
     localStorage.removeItem('taskAceToken');
-    localStorage.removeItem('productivityApp');
+    localStorage.removeItem('taskAceTokenExpiry');
+    
+    // Clear user-specific app data
+    const allKeys = Object.keys(localStorage);
+    allKeys.forEach(key => {
+      if (key.startsWith('productivityApp_user_')) {
+        localStorage.removeItem(key);
+      }
+    });
     
     dispatch({ type: 'LOGOUT' });
     toast.success('Successfully logged out!');
