@@ -69,8 +69,14 @@ const TaskForm: React.FC<TaskFormProps> = ({ initialData, onClose }) => {
         syncTaskWithCalendar(updatedTask.id);
       }
     } else {
+      // Ensure all required fields are included as non-optional
       const newTask: Omit<Task, 'id'> = {
-        ...data,
+        title: data.title,
+        description: data.description || '',
+        dueDate: data.dueDate,
+        priority: data.priority,
+        duration: data.duration,
+        category: data.category,
         completed: false,
         timeSpent: 0,
       };
