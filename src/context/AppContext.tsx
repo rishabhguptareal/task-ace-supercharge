@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useReducer } from 'react';
 import { Task, DailyStats, AppState } from '../types';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useAuth } from './AuthContext';
 
 interface AppContextType {
   state: AppState;
@@ -22,12 +23,7 @@ const defaultState: AppState = {
   isGoogleCalendarConnected: false,
 };
 
-// Get initial state from localStorage if available
-const getInitialState = (): AppState => {
-  const storedState = localStorage.getItem('productivityApp');
-  return storedState ? JSON.parse(storedState) : defaultState;
-};
-
+// Action types
 type Action = 
   | { type: 'ADD_TASK'; payload: Task }
   | { type: 'UPDATE_TASK'; payload: Task }
@@ -171,12 +167,27 @@ const appReducer = (state: AppState, action: Action): AppState => {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { state: authState } = useAuth();
+  const userId = authState.user?.id;
+  
+  // Get initial state from localStorage with user-specific key
+  const getInitialState = (): AppState => {
+    if (!userId) return defaultState;
+    
+    const storageKey = `productivityApp_user_${userId}`;
+    const storedState = localStorage.getItem(storageKey);
+    return storedState ? JSON.parse(storedState) : defaultState;
+  };
+  
   const [state, dispatch] = useReducer(appReducer, getInitialState());
 
-  // Save to localStorage whenever state changes
+  // Save to localStorage with user-specific key whenever state changes
   useEffect(() => {
-    localStorage.setItem('productivityApp', JSON.stringify(state));
-  }, [state]);
+    if (userId) {
+      const storageKey = `productivityApp_user_${userId}`;
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    }
+  }, [state, userId]);
 
   // Update daily stats every time tasks change
   useEffect(() => {

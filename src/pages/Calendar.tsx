@@ -1,55 +1,59 @@
 
-import React from 'react';
+import React, { useState } from 'react';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import Layout from '@/components/Layout';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAppContext } from '@/context/AppContext';
-import { Card } from '@/components/ui/card';
-import { CalendarIcon, Clock, Target } from 'lucide-react';
-import { Calendar as CalendarUI } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { Badge } from '@/components/ui/badge';
+import { format, isEqual, parse } from 'date-fns';
+import { Task } from '@/types';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import TaskForm from '@/components/TaskForm';
 
-const CalendarPage = () => {
+interface TaskEvent {
+  task: Task;
+  startTime: string;
+  endTime: string;
+}
+
+const Calendar = () => {
   const { state } = useAppContext();
-  const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(new Date());
-  
-  // Filter tasks for the selected date
-  const tasksForSelectedDate = selectedDate
-    ? state.tasks.filter(task => {
-        if (!task.dueDate) return false;
-        const taskDate = new Date(task.dueDate);
-        return (
-          taskDate.getDate() === selectedDate.getDate() &&
-          taskDate.getMonth() === selectedDate.getMonth() &&
-          taskDate.getFullYear() === selectedDate.getFullYear()
-        );
-      })
-    : [];
-    
-  // Create a function to check if a date has tasks
-  const hasTasksOnDate = (date: Date) => {
-    return state.tasks.some(task => {
-      if (!task.dueDate) return false;
-      const taskDate = new Date(task.dueDate);
-      return (
-        taskDate.getDate() === date.getDate() &&
-        taskDate.getMonth() === date.getMonth() &&
-        taskDate.getFullYear() === date.getFullYear()
-      );
-    });
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | undefined>(undefined);
+
+  // Group tasks by date
+  const tasksByDate = state.tasks.reduce<Record<string, Task[]>>((acc, task) => {
+    if (task.dueDate) {
+      const dateStr = format(new Date(task.dueDate), 'yyyy-MM-dd');
+      if (!acc[dateStr]) {
+        acc[dateStr] = [];
+      }
+      acc[dateStr].push(task);
+    }
+    return acc;
+  }, {});
+
+  // Get tasks for the selected date
+  const getTasksForDate = (date: Date | undefined): Task[] => {
+    if (!date) return [];
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return tasksByDate[dateStr] || [];
   };
-  
-  // Custom day render to highlight days with tasks
-  const renderDay = (day: Date) => {
-    const hasTasks = hasTasksOnDate(day);
-    return (
-      <div className={`relative ${hasTasks ? 'font-bold' : ''}`}>
-        {day.getDate()}
-        {hasTasks && (
-          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />
-        )}
-      </div>
-    );
+
+  // Function to determine if a day has tasks
+  const isDayWithTasks = (date: Date): boolean => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return !!tasksByDate[dateStr] && tasksByDate[dateStr].length > 0;
   };
+
+  const selectedDateTasks = getTasksForDate(selectedDate);
+
+  // Generate time slots for the day
+  const timeSlots = Array.from({ length: 24 }).map((_, i) => {
+    const hour = i;
+    return `${hour.toString().padStart(2, '0')}:00`;
+  });
 
   return (
     <Layout>
@@ -60,114 +64,128 @@ const CalendarPage = () => {
             View and manage your scheduled tasks
           </p>
         </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <Card className="p-4">
-              <div className="mb-4 flex items-center">
-                <CalendarIcon className="mr-2 h-5 w-5 text-primary" />
-                <h2 className="text-lg font-semibold">Calendar</h2>
-              </div>
-              <CalendarUI
-                mode="single"
-                selected={selectedDate}
-                onSelect={setSelectedDate}
-                className="rounded-md border w-full"
-                components={{
-                  Day: ({ day }) => renderDay(day),
-                }}
-              />
-              
-              <div className="mt-4 text-sm text-gray-500">
-                {state.isGoogleCalendarConnected ? (
-                  <div className="flex items-center text-green-600">
-                    <CalendarIcon className="h-4 w-4 mr-1" />
-                    <span>Connected to Google Calendar</span>
-                  </div>
-                ) : (
-                  <div>Connect Google Calendar for better scheduling</div>
-                )}
-              </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-1">
+            <Card>
+              <CardHeader>
+                <CardTitle>Calendar</CardTitle>
+                <CardDescription>Select a date to view tasks</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CalendarComponent
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  className="rounded-md border"
+                  modifiers={{
+                    hasTasks: (date) => isDayWithTasks(date),
+                  }}
+                  modifiersClassNames={{
+                    hasTasks: "bg-primary/20",
+                  }}
+                />
+              </CardContent>
             </Card>
           </div>
-          
-          <div className="lg:col-span-2">
-            <Card className="p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center">
-                  <Target className="mr-2 h-5 w-5 text-primary" />
-                  <h2 className="text-lg font-semibold">
-                    Tasks for {selectedDate ? format(selectedDate, 'MMMM d, yyyy') : 'Selected Date'}
-                  </h2>
+
+          <div className="md:col-span-2">
+            <Card className="h-full">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>
+                    {selectedDate ? format(selectedDate, 'EEEE, MMMM d, yyyy') : 'Select a date'}
+                  </CardTitle>
+                  <CardDescription>
+                    {selectedDateTasks.length} tasks scheduled
+                  </CardDescription>
                 </div>
-              </div>
-              
-              {tasksForSelectedDate.length === 0 ? (
-                <div className="text-center p-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                  <p className="text-gray-500">No tasks scheduled for this date</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {tasksForSelectedDate.map(task => (
-                    <div 
-                      key={task.id} 
-                      className={`p-3 rounded-md border ${
-                        task.completed 
-                          ? 'bg-gray-50 border-gray-200' 
-                          : 'bg-white border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <input 
-                            type="checkbox"
-                            checked={task.completed}
-                            readOnly
-                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                          />
-                          <span className={`ml-2 ${
-                            task.completed ? 'line-through text-gray-500' : 'text-gray-900'
-                          }`}>
+                <Dialog open={isTaskDialogOpen} onOpenChange={setIsTaskDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline">Add Task</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Task</DialogTitle>
+                    </DialogHeader>
+                    <TaskForm 
+                      initialData={undefined} 
+                      onClose={() => setIsTaskDialogOpen(false)} 
+                    />
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                {selectedDateTasks.length > 0 ? (
+                  <div className="space-y-4">
+                    {selectedDateTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className={`p-3 rounded-md border cursor-pointer ${
+                          task.completed ? 'bg-green-50 border-green-200' : 'bg-white'
+                        }`}
+                        onClick={() => {
+                          setSelectedTask(task);
+                          setIsTaskDialogOpen(true);
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <h3 className={`font-medium ${task.completed ? 'line-through text-green-700' : ''}`}>
                             {task.title}
+                          </h3>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            task.priority === 'high'
+                              ? 'bg-red-100 text-red-800'
+                              : task.priority === 'medium'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {task.priority}
                           </span>
                         </div>
-                        <div className="flex items-center">
-                          <Clock className="h-4 w-4 text-gray-400 mr-1" />
-                          <span className="text-xs text-gray-500">
-                            {task.duration} min
-                          </span>
-                          
-                          {task.priority && (
-                            <Badge 
-                              className={`ml-2 ${
-                                task.priority === 'high' 
-                                  ? 'bg-red-100 text-red-800'
-                                  : task.priority === 'medium'
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-blue-100 text-blue-800'
-                              }`}
-                            >
-                              {task.priority}
-                            </Badge>
-                          )}
+                        <p className="text-sm text-gray-500 mt-1">
+                          {task.description || 'No description'}
+                        </p>
+                        <div className="flex justify-between mt-2 text-xs text-gray-500">
+                          <span>Duration: {task.duration} minutes</span>
+                          <span>Category: {task.category}</span>
                         </div>
                       </div>
-                      
-                      {task.description && (
-                        <p className="text-sm text-gray-600 mt-1 ml-6">
-                          {task.description}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    No tasks scheduled for this date
+                  </div>
+                )}
+              </CardContent>
             </Card>
           </div>
         </div>
+
+        {/* Task Dialog */}
+        <Dialog open={isTaskDialogOpen && !!selectedTask} onOpenChange={(open) => {
+          if (!open) {
+            setIsTaskDialogOpen(false);
+            setSelectedTask(undefined);
+          }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Task</DialogTitle>
+            </DialogHeader>
+            <TaskForm
+              initialData={selectedTask}
+              onClose={() => {
+                setIsTaskDialogOpen(false);
+                setSelectedTask(undefined);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
 };
 
-export default CalendarPage;
+export default Calendar;

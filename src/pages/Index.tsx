@@ -1,10 +1,10 @@
 
 import React from 'react';
 import Layout from '@/components/Layout';
-import { AppProvider } from '@/context/AppContext';
 import TaskList from '@/components/TaskList';
 import DashboardStats from '@/components/DashboardStats';
 import GoogleCalendarConnect from '@/components/GoogleCalendarConnect';
+import { AppProvider } from '@/context/AppContext';
 
 const Index = () => {
   return (
